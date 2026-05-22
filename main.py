@@ -5,11 +5,9 @@ from pydantic import BaseModel
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 
-from openai import OpenAI
-
 import requests
 import re
-import os
+from urllib.parse import urlparse
 
 # ======================================================
 # FASTAPI APP
@@ -18,7 +16,7 @@ import os
 app = FastAPI()
 
 # ======================================================
-# CORS SUPPORT FOR FLUTTER
+# CORS SUPPORT
 # ======================================================
 
 app.add_middleware(
@@ -27,17 +25,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# ======================================================
-# OPENAI API KEY
-# ======================================================
-
-# SET YOUR OPENAI API KEY HERE
-OPENAI_API_KEY = "YOUR_OPENAI_API_KEY"
-
-client = OpenAI(
-    api_key=OPENAI_API_KEY
 )
 
 # ======================================================
@@ -62,12 +49,12 @@ spam_numbers = {
 }
 
 # ======================================================
-# AI TRAINING DATA
+# TRAINING DATA
 # ======================================================
 
 texts = [
 
-    # Scam Messages
+    # Scam
     "your bank account blocked click link",
     "win money now click here",
     "urgent verify account",
@@ -88,14 +75,7 @@ texts = [
     "refund pending verify account",
     "wallet verification required",
 
-    # Phishing URLs
-    "http://fake-bank-login.xyz",
-    "https://verify-otp-now.com",
-    "click phishing link now",
-    "crypto giveaway free bitcoin",
-    "upi account suspended verify now",
-
-    # Safe Messages
+    # Safe
     "meeting at 5pm",
     "call me later",
     "project meeting tomorrow",
@@ -111,12 +91,11 @@ texts = [
 labels = [
     1,1,1,1,1,1,1,1,1,1,
     1,1,1,1,1,1,1,1,1,
-    1,1,1,1,1,
     0,0,0,0,0,0,0,0,0,0
 ]
 
 # ======================================================
-# TRAIN MACHINE LEARNING MODEL
+# ML MODEL
 # ======================================================
 
 vectorizer = CountVectorizer(
@@ -132,7 +111,58 @@ model = LogisticRegression(
 model.fit(X, labels)
 
 # ======================================================
-# HOME ROUTE
+# RISK KEYWORDS
+# ======================================================
+
+HIGH_RISK_KEYWORDS = [
+    "otp",
+    "verify",
+    "bank",
+    "login",
+    "crypto",
+    "bitcoin",
+    "free",
+    "gift",
+    "winner",
+    "claim",
+    "upi",
+    "suspended",
+    "kyc",
+    "reward",
+    "apk",
+    "cashback",
+    "password",
+    "wallet",
+    "transfer",
+    "refund",
+    "telegram",
+    "investment",
+    "guaranteed",
+    "urgent",
+    "blocked",
+]
+
+SUSPICIOUS_DOMAINS = [
+    "bit.ly",
+    "tinyurl",
+    "rb.gy",
+    "grabify",
+]
+
+BANK_NAMES = [
+    "sbi",
+    "hdfc",
+    "icici",
+    "axis",
+    "kotak",
+    "paypal",
+    "phonepe",
+    "paytm",
+    "gpay",
+]
+
+# ======================================================
+# HOME
 # ======================================================
 
 @app.get("/")
@@ -143,7 +173,7 @@ def home():
     }
 
 # ======================================================
-# HEALTH CHECK
+# HEALTH
 # ======================================================
 
 @app.get("/health")
@@ -154,20 +184,143 @@ def health():
     }
 
 # ======================================================
-# URL DETECTION
+# URL EXTRACTION
 # ======================================================
 
-def contains_url(text):
+def extract_urls(text):
 
-    url_pattern = r"(https?://[^\s]+)"
+    pattern = r"(https?://[^\s]+)"
 
-    return re.search(url_pattern, text)
+    return re.findall(pattern, text)
 
 # ======================================================
-# GOOGLE SAFE BROWSING
+# URL ANALYSIS
 # ======================================================
 
-GOOGLE_SAFE_BROWSING_KEY = "fd95516e1a9ed3bf8b6d84ab77ee75b29cccdb6c9534051dc998a8c2c05875a2"
+def analyze_urls(urls):
+
+    risk = 0
+
+    findings = []
+
+    for url in urls:
+
+        parsed = urlparse(url)
+
+        domain = parsed.netloc.lower()
+
+        for suspicious in SUSPICIOUS_DOMAINS:
+
+            if suspicious in domain:
+
+                risk += 35
+
+                findings.append(
+                    f"Suspicious shortened URL: {domain}"
+                )
+
+        if "@" in url:
+
+            risk += 20
+
+            findings.append(
+                "URL contains @ symbol"
+            )
+
+        if domain.count("-") >= 3:
+
+            risk += 20
+
+            findings.append(
+                "Suspicious domain structure"
+            )
+
+    return risk, findings
+
+# ======================================================
+# KEYWORD ANALYSIS
+# ======================================================
+
+def keyword_analysis(text):
+
+    text = text.lower()
+
+    risk = 0
+
+    findings = []
+
+    for keyword in HIGH_RISK_KEYWORDS:
+
+        if keyword in text:
+
+            risk += 10
+
+            findings.append(
+                f"Keyword detected: {keyword}"
+            )
+
+    return risk, findings
+
+# ======================================================
+# PHISHING DETECTION
+# ======================================================
+
+def phishing_detection(text):
+
+    text_lower = text.lower()
+
+    risk = 0
+
+    findings = []
+
+    urls = extract_urls(text)
+
+    for bank in BANK_NAMES:
+
+        if bank in text_lower and len(urls) > 0:
+
+            risk += 25
+
+            findings.append(
+                f"Possible phishing targeting {bank}"
+            )
+
+    return risk, findings
+
+# ======================================================
+# AI PATTERN ANALYSIS
+# ======================================================
+
+def ai_prompt_analysis(text):
+
+    patterns = [
+        r"click.*link",
+        r"verify.*account",
+        r"urgent.*action",
+        r"send.*otp",
+        r"claim.*reward",
+        r"limited.*offer",
+    ]
+
+    risk = 0
+
+    findings = []
+
+    for pattern in patterns:
+
+        if re.search(pattern, text.lower()):
+
+            risk += 10
+
+            findings.append(
+                f"Suspicious behavior pattern: {pattern}"
+            )
+
+    return risk, findings
+
+# ======================================================
+# SAFE BROWSING CHECK
+# ======================================================
 
 def google_safe_browsing_check(url):
 
@@ -175,7 +328,7 @@ def google_safe_browsing_check(url):
 
         api_url = (
             "https://safebrowsing.googleapis.com/v4/"
-            f"threatMatches:find?key={fd95516e1a9ed3bf8b6d84ab77ee75b29cccdb6c9534051dc998a8c2c05875a2}"
+            "threatMatches:find"
         )
 
         payload = {
@@ -206,107 +359,19 @@ def google_safe_browsing_check(url):
         response = requests.post(
             api_url,
             json=payload,
-            timeout=15
+            timeout=10
         )
 
         data = response.json()
 
-        if "matches" in data:
-            return True
-
-        return False
+        return "matches" in data
 
     except Exception:
+
         return False
 
 # ======================================================
-# OLLAMA AI ANALYSIS
-# ======================================================
-
-def ollama_analysis(text):
-
-    try:
-
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "phi3",
-                "prompt": f"""
-You are a cybersecurity AI.
-
-Analyze this message for:
-- scam
-- phishing
-- fraud
-- malicious intent
-- social engineering
-
-Message:
-{text}
-
-Reply with:
-1. Risk level
-2. Reason
-3. Threat type
-4. Recommended action
-""",
-                "stream": False
-            },
-            timeout=20
-        )
-
-        data = response.json()
-
-        return data.get("response", "")
-
-    except Exception as e:
-
-        return f"Ollama AI unavailable: {str(e)}"
-
-# ======================================================
-# OPENAI ANALYSIS
-# ======================================================
-
-def openai_analysis(text):
-
-    try:
-
-        response = client.chat.completions.create(
-
-            model="gpt-4.1-mini",
-
-            messages=[
-
-                {
-                    "role": "system",
-                    "content": """
-You are a cybersecurity AI.
-
-Analyze messages for:
-- scams
-- phishing
-- fraud
-- impersonation
-- malicious intent
-- social engineering
-"""
-                },
-
-                {
-                    "role": "user",
-                    "content": text
-                }
-            ]
-        )
-
-        return response.choices[0].message.content
-
-    except Exception as e:
-
-        return f"OpenAI unavailable: {str(e)}"
-
-# ======================================================
-# AI SCAN API
+# SCAN API
 # ======================================================
 
 @app.post("/scan")
@@ -314,59 +379,55 @@ def scan(data: InputData):
 
     text = data.text.lower()
 
-    suspicious_keywords = [
-        "verify",
-        "otp",
-        "bank",
-        "login",
-        "crypto",
-        "bitcoin",
-        "free",
-        "gift",
-        "winner",
-        "claim",
-        "upi",
-        "suspended",
-        "kyc",
-        "reward",
-        "apk",
-        "cashback",
-        "password",
-        "wallet",
-        "transfer",
-        "refund",
-        "support",
-        "telegram",
-        "investment",
-        "guaranteed",
-        "urgent",
-        "blocked",
-        "account",
-    ]
+    total_risk = 0
 
-    # ======================================================
-    # URL PHISHING CHECK
-    # ======================================================
+    findings = []
 
-    if contains_url(text):
+    # ==================================================
+    # URL ANALYSIS
+    # ==================================================
 
-        for word in suspicious_keywords:
+    urls = extract_urls(text)
 
-            if word in text:
+    url_risk, url_findings = analyze_urls(urls)
 
-                safe_browsing = google_safe_browsing_check(text)
+    total_risk += url_risk
 
-                return {
-                    "analysis": "🚨 High Risk Phishing URL Detected",
-                    "score": 95,
-                    "type": "phishing",
-                    "google_safe_browsing": safe_browsing,
-                    "ai_analysis": "Suspicious phishing URL detected"
-                }
+    findings.extend(url_findings)
 
-    # ======================================================
-    # MACHINE LEARNING DETECTION
-    # ======================================================
+    # ==================================================
+    # KEYWORD ANALYSIS
+    # ==================================================
+
+    keyword_risk, keyword_findings = keyword_analysis(text)
+
+    total_risk += keyword_risk
+
+    findings.extend(keyword_findings)
+
+    # ==================================================
+    # PHISHING DETECTION
+    # ==================================================
+
+    phishing_risk, phishing_findings = phishing_detection(text)
+
+    total_risk += phishing_risk
+
+    findings.extend(phishing_findings)
+
+    # ==================================================
+    # AI PATTERN ANALYSIS
+    # ==================================================
+
+    ai_risk, ai_findings = ai_prompt_analysis(text)
+
+    total_risk += ai_risk
+
+    findings.extend(ai_findings)
+
+    # ==================================================
+    # MACHINE LEARNING ANALYSIS
+    # ==================================================
 
     X_input = vectorizer.transform([text])
 
@@ -374,46 +435,49 @@ def scan(data: InputData):
 
     probability = model.predict_proba(X_input)[0][1]
 
-    score = int(probability * 100)
-
-    # ======================================================
-    # OLLAMA ANALYSIS
-    # ======================================================
-
-    ollama_result = ollama_analysis(text)
-
-    # ======================================================
-    # OPENAI ANALYSIS
-    # ======================================================
-
-    openai_result = openai_analysis(text)
-
-    # ======================================================
-    # FINAL RESPONSE
-    # ======================================================
+    ml_score = int(probability * 100)
 
     if prediction == 1:
 
-        return {
-            "analysis": "🚨 AI detected possible scam",
-            "score": max(score, 75),
-            "type": "spam",
-            "ollama_analysis": ollama_result,
-            "openai_analysis": openai_result
-        }
+        total_risk += ml_score
+
+        findings.append(
+            "Machine learning detected scam behavior"
+        )
+
+    # ==================================================
+    # LIMIT SCORE
+    # ==================================================
+
+    if total_risk > 100:
+
+        total_risk = 100
+
+    # ==================================================
+    # FINAL ANALYSIS
+    # ==================================================
+
+    if total_risk >= 80:
+
+        analysis = "🚨 HIGH RISK SCAM"
+
+    elif total_risk >= 40:
+
+        analysis = "⚠️ MEDIUM RISK"
 
     else:
 
-        return {
-            "analysis": "✅ Message appears safe",
-            "score": 15,
-            "type": "safe",
-            "ollama_analysis": ollama_result,
-            "openai_analysis": openai_result
-        }
+        analysis = "✅ LOW RISK"
+
+    return {
+        "analysis": analysis,
+        "score": total_risk,
+        "findings": findings,
+        "urls_detected": urls,
+    }
 
 # ======================================================
-# CALLER REPUTATION CHECK
+# CALLER REPUTATION
 # ======================================================
 
 @app.post("/check-number")
@@ -435,10 +499,8 @@ def check_number(data: NumberCheck):
             "risk": 95
         }
 
-    else:
-
-        return {
-            "result": "✅ Safe Number",
-            "reason": "No complaints found",
-            "risk": 10
-        }
+    return {
+        "result": "✅ Safe Number",
+        "reason": "No complaints found",
+        "risk": 10
+    }
