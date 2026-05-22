@@ -1,4 +1,10 @@
 fastapi
 uvicorn
 scikit-learn
-pandas
+requests
+pydantic
+openai
+numpy
+scipy
+joblib
+threadpoolctl
